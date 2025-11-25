@@ -4,7 +4,6 @@
 #include "hardware_stm_timer3.h"
 #include "hardware_stm_interruptcontroller.h"
 
-
 #include "i2c.h"
 #include "stdio.h"
 #include "mpu6050.h"
@@ -12,46 +11,10 @@
 extern "C" {
 #include "uart.h"
 #include "Time_Out.h"
+#include "fusion.h"
 }
 
-
-
-// #define rate 300
-// uint32_t previous;
-
-
-// int main(void)
-// {
-// 	Ticks_Init(16000000);
-
-// 	USART2_Init();
-
-// 	my_i2c_init();
-
-// 	MPU_ConfigTypeDef myConfig;
-
-// 	myConfig.Accel_Full_Scale = AFS_SEL_4g;
-// 	myConfig.ClockSource = Internal_8MHz;
-// 	myConfig.CONFIG_DLPF = DLPF_184A_188G_Hz;
-// 	myConfig.Sleep_Mode_Bit = 0;
-// 	myConfig.Gyro_Full_Scale = FS_SEL_500;
-
-// 	MPU6050_Config(&myConfig);
-
-// 	ScaledData_Def meAccel;
-
-// 	while(1)
-// 	{
-// 		MPU6050_Get_Accel_Scale(&meAccel);
-// 		if(get_Ticks()-previous >rate)
-// 		{
-// 		    printf("Accel: X = %.2f Y = %.2f Z = %.2f\r\n", meAccel.x, meAccel.y, meAccel.z);
-// 		    printf("==============================\r\n");
-// 			previous=get_Ticks();
-// 		}
-// 	}
-
-// }
+//hellos
 
 int main(void)
 {
@@ -74,24 +37,32 @@ int main(void)
 
     UART_Write_String("Boot OK\r\n");
 
-    // Read WHO_AM_I register (0x75, should be 0x68)
-    uint8_t who = 0;
-    i2c_readByte(MPU_ADDR, WHO_AM_I_REG, &who);
+    Attitude_Def att;
+    Attitude_Init(&att, 0.0f, 0.0f, 0.0f);
 
-    UART_Write_String("WHO_AM_I = 0x");
-    char buf[8];
-    sprintf(buf, "%02X\r\n", who);
-    UART_Write_String(buf);
+    uint32_t last_ticks = get_Ticks();
+    char buf[128];
 
     while (1) {
-    ScaledData_Def accel;
-    MPU6050_Get_Accel_Scale(&accel);
+        uint32_t now = get_Ticks();
+        float dt = (now - last_ticks) / 1000.0f; // ms -> s
+        last_ticks = now;
+        if (dt <= 0.0f) dt = 0.001f;
 
-    char buf[64];
-    sprintf(buf, "Ax=%.3f Ay=%.3f Az=%.3f\r\n",
-            accel.x, accel.y, accel.z);
-    UART_Write_String(buf);
+        ScaledData_Def acc, gyro, acc_lin;
 
-    delay(200);
+        MPU6050_Get_Accel_Scale(&acc);   // also fills GyroRW
+        MPU6050_Get_Gyro_Scale(&gyro);   // uses GyroRW
+
+        Attitude_Update(&acc, &gyro, dt, &att);
+        Remove_Gravity(&acc, &att, &acc_lin);
+
+        sprintf(buf,
+        "R=%.2f P=%.2f | Ax_lin=%.3f Ay_lin=%.3f Az_lin=%.3f\r\n",
+        att.roll, att.pitch,
+        acc_lin.x, acc_lin.y, acc_lin.z);
+        UART_Write_String(buf);
+
+        delay(50);
     }
 }

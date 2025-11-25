@@ -9,6 +9,11 @@ static float A_X_Bias = 0.0f;
 static float A_Y_Bias = 0.0f;
 static float A_Z_Bias = 0.0f;
 
+static float G_X_Bias = 0.0f;
+static float G_Y_Bias = 0.0f;
+static float G_Z_Bias = 0.0f;
+
+
 static int16_t GyroRW[3];
 
 void MPU6050_Config(MPU_ConfigTypeDef *config)
@@ -202,13 +207,12 @@ void MPU6050_Get_Gyro_RawData(RawData_Def *rawDef)
 //13- Get Gyro scaled data
 void MPU6050_Get_Gyro_Scale(ScaledData_Def *scaledDef)
 {
-	RawData_Def myGyroRaw;
-	MPU6050_Get_Gyro_RawData(&myGyroRaw);
-	
-	//Gyro Scale data 
-	scaledDef->x = (myGyroRaw.x)*gyroScalingFactor; // x-Axis
-	scaledDef->y = (myGyroRaw.y)*gyroScalingFactor; // y-Axis
-	scaledDef->z = (myGyroRaw.z)*gyroScalingFactor; // z-Axis
+    RawData_Def myGyroRaw;
+    MPU6050_Get_Gyro_RawData(&myGyroRaw);
+
+    scaledDef->x = (myGyroRaw.x)*gyroScalingFactor - G_X_Bias;
+    scaledDef->y = (myGyroRaw.y)*gyroScalingFactor - G_Y_Bias;
+    scaledDef->z = (myGyroRaw.z)*gyroScalingFactor - G_Z_Bias;
 }
 
 //14- Accel Calibration
@@ -223,3 +227,25 @@ void _Accel_Cali(float x_min, float x_max, float y_min, float y_max, float z_min
 	//3* Z-Axis calibrate
 	A_Z_Bias		= (z_max + z_min)/2.0f;
 }
+
+void Gyro_Cali(void)
+{
+    ScaledData_Def g;
+    const int N = 500;
+    float sumx = 0, sumy = 0, sumz = 0;
+
+    for (int i = 0; i < N; i++) {
+        ScaledData_Def rawGyro;
+        MPU6050_Get_Gyro_Scale(&rawGyro);  // or raw + manual scaling
+        sumx += rawGyro.x;
+        sumy += rawGyro.y;
+        sumz += rawGyro.z;
+        delay(2); // ~2 ms between samples
+    }
+
+    G_X_Bias = sumx / N;
+    G_Y_Bias = sumy / N;
+    G_Z_Bias = sumz / N;
+}
+
+
