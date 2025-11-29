@@ -8,61 +8,57 @@
 #include "stdio.h"
 #include "mpu6050.h"
 
-extern "C" {
 #include "uart.h"
 #include "Time_Out.h"
 #include "fusion.h"
-}
+
+
 
 //hellos
 
 int main(void)
 {
-    USART2_Init();          // actually sets up USART3 -> ST-LINK VCP
-    Ticks_Init(180000000);  // core clock ~180 MHz (for Nucleo F446)
+    USART2_Init();
+    Ticks_Init(180000000);
 
-    my_i2c_init();
+    //my_i2c_init();           // Your old I2C init
+    i2c1_init();
+    MPU6050_DMA_Init();      // Our DMA extension
 
+    // Configure IMU using your existing driver
+    MPU_ConfigTypeDef cfg = {
+        .ClockSource = Internal_8MHz,
+        .Gyro_Full_Scale = FS_SEL_250,
+        .Accel_Full_Scale = AFS_SEL_2g,
+        .CONFIG_DLPF = DLPF_94A_98G_Hz,
+        .Sleep_Mode_Bit = 0
+    };
+    MPU6050_Config(&cfg);
 
-    MPU_ConfigTypeDef mpu_cfg;
+    // Register DMA callback
+    i2c1_dma_setCallback(MPU6050_DMA_DoneHandler);
 
-    mpu_cfg.ClockSource      = Internal_8MHz;     // or whichever you want
-    mpu_cfg.Gyro_Full_Scale  = FS_SEL_250;
-    mpu_cfg.Accel_Full_Scale = AFS_SEL_2g;
-    mpu_cfg.CONFIG_DLPF      = DLPF_94A_98G_Hz;
-    mpu_cfg.Sleep_Mode_Bit   = 0;
+    UART_Write_String("MPU6050 DMA READY\n");
 
-    MPU6050_Config(&mpu_cfg);
+    MPU6050_Frame_t frame;
 
+    while (1)
+    {
+        // Trigger a DMA read periodically
+        MPU6050_DMA_RequestRead();
+        // If new data arrived
+        if (MPU6050_DMA_GetLatest(&frame))
+        {
+            char buf[128];
+            sprintf(buf,
+                "ax=%d ay=%d az=%d | gx=%d gy=%d gz=%d | t=%u\n",
+                frame.ax, frame.ay, frame.az,
+                frame.gx, frame.gy, frame.gz,
+                frame.timestamp
+            );
+            UART_Write_String(buf);
+        }
 
-    UART_Write_String("Boot OK\r\n");
-
-    Attitude_Def att;
-    Attitude_Init(&att, 0.0f, 0.0f, 0.0f);
-
-    uint32_t last_ticks = get_Ticks();
-    char buf[128];
-
-    while (1) {
-        uint32_t now = get_Ticks();
-        float dt = (now - last_ticks) / 1000.0f; // ms -> s
-        last_ticks = now;
-        if (dt <= 0.0f) dt = 0.001f;
-
-        ScaledData_Def acc, gyro, acc_lin;
-
-        MPU6050_Get_Accel_Scale(&acc);   // also fills GyroRW
-        MPU6050_Get_Gyro_Scale(&gyro);   // uses GyroRW
-
-        Attitude_Update(&acc, &gyro, dt, &att);
-        Remove_Gravity(&acc, &att, &acc_lin);
-
-        sprintf(buf,
-        "R=%.2f P=%.2f | Ax_lin=%.3f Ay_lin=%.3f Az_lin=%.3f\r\n",
-        att.roll, att.pitch,
-        acc_lin.x, acc_lin.y, acc_lin.z);
-        UART_Write_String(buf);
-
-        delay(50);
+        delay(5); // Trigger rate ~200 Hz (or use TIMx)
     }
 }

@@ -1,10 +1,10 @@
 // mpu6050.h
+// mpu6050.h
 #ifndef MPU6050_H_
 #define MPU6050_H_
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "i2c.h"
 #include <math.h>
 #include <string.h>
 
@@ -114,6 +114,13 @@ typedef struct
     float z;
 } ScaledData_Def;
 
+typedef struct {
+    int16_t ax, ay, az;
+    int16_t gx, gy, gz;
+    int16_t temp;
+    uint32_t timestamp;
+} MPU6050_Frame_t;
+
 // Function Prototypes
 void     MPU6050_Config(MPU_ConfigTypeDef *config);
 uint8_t  MPU6050_Get_SMPRT_DIV(void);
@@ -128,6 +135,10 @@ void     MPU6050_Get_Gyro_Scale(ScaledData_Def *scaledDef);
 void     _Accel_Cali(float x_min, float x_max,
                      float y_min, float y_max,
                      float z_min, float z_max);
+void MPU6050_DMA_RequestRead(void);
+void MPU6050_DMA_DoneHandler(void);
+uint8_t MPU6050_DMA_GetLatest(MPU6050_Frame_t *out);
+void MPU6050_DMA_Init(void);
 
 #ifdef __cplusplus
 }
