@@ -12,22 +12,15 @@
 #include "Time_Out.h"
 #include "fusion.h"
 #include "swing_detector.h"   
-
-//hellos
-
-/* raw -> deg/s for ±250 dps full-scale */
-#define GYRO_SCALE_250DPS   (250.0f / 32768.0f)
-/* length of one detection window in ms */
-#define WINDOW_MS           400U
+ 
 
 int main(void)
 {
     USART2_Init();
-    Ticks_Init(180000000);
+    Ticks_Init(180000000);    // SysTick at 1 ms tick
 
-    //my_i2c_init();           // Your old I2C init
-    i2c1_init();
-    MPU6050_DMA_Init();      // Our DMA extension
+    i2c1_init();              // bare-metal I2C init
+    MPU6050_DMA_Init();       // DMA extension
 
     // Configure IMU using your existing driver
     MPU_ConfigTypeDef cfg = {
@@ -39,91 +32,95 @@ int main(void)
     };
     MPU6050_Config(&cfg);
 
-    // Register DMA callback
+    // Register DMA callback that unpacks samples
     i2c1_dma_setCallback(MPU6050_DMA_DoneHandler);
 
-    // Init swing detector
+    // Init swing detector (also clears its internal event buffer)
     SwingDetector_Init();
-    SwingDetector_BeginWindow();
 
     UART_Write_String("MPU6050 DMA + Swing detector READY\r\n");
 
     MPU6050_Frame_t frame;
 
-    uint32_t lastTs        = 0;
-    uint8_t  haveLast      = 0;
-    uint32_t windowStartMs = get_Ticks();
+    const uint32_t WINDOW_MS = 300;      // ~0.3 s swing analysis window
+    uint8_t  windowActive    = 0;
+    uint32_t windowStartTs   = 0;
+    uint32_t lastSampleTs    = 0;
 
     while (1)
     {
-        // Trigger a DMA read periodically
+        // Kick a DMA read (non-blocking)
         MPU6050_DMA_RequestRead();
 
-        // If new data arrived
+        // If a new frame is ready, process it
         if (MPU6050_DMA_GetLatest(&frame))
         {
-            uint32_t ts   = frame.timestamp;  // set in MPU6050_DMA_DoneHandler()
-            float    dt_s = 0.0f;
+            uint32_t now = frame.timestamp;  // from get_Ticks() in DMA handler
 
-            if (haveLast) {
-                uint32_t dt_ms = ts - lastTs;   // SysTick is 1 ms
+            // Compute dt in seconds between this and previous sample
+            float dt_s = 0.0f;
+            if (lastSampleTs != 0U) {
+                uint32_t dt_ms = now - lastSampleTs;
                 dt_s = (float)dt_ms * 0.001f;
-            } else {
-                haveLast = 1;
             }
-            lastTs = ts;
+            lastSampleTs = now;
 
-            // Convert raw gyro to deg/s
-            float gx_dps = (float)frame.gx * GYRO_SCALE_250DPS;
-            float gy_dps = (float)frame.gy * GYRO_SCALE_250DPS;
-            float gz_dps = (float)frame.gz * GYRO_SCALE_250DPS;
+            // Convert raw gyro to deg/s (FS = ±250 dps)
+            float gx_dps = (float)frame.gx * 250.0f / 32768.0f;
+            float gy_dps = (float)frame.gy * 250.0f / 32768.0f;
+            float gz_dps = (float)frame.gz * 250.0f / 32768.0f;
 
-            // For now we’re not using linear acceleration in the swing detector
+            // For now we don’t use linear accel in swing detection
             float ax_lin = 0.0f;
             float ay_lin = 0.0f;
             float az_lin = 0.0f;
 
-            // Feed sample into swing window (only if we have a valid dt)
+            // If no active window, start one at this timestamp
+            if (!windowActive) {
+                SwingDetector_BeginWindow();
+                windowStartTs = now;
+                windowActive  = 1;
+            }
+
+            // Feed this sample into the current window
             if (dt_s > 0.0f) {
                 SwingDetector_Update(gx_dps, gy_dps, gz_dps,
                                      ax_lin, ay_lin, az_lin,
                                      dt_s);
             }
 
-            // Every WINDOW_MS, classify the last window as swing / no swing
-            if ((ts - windowStartMs) >= WINDOW_MS)
-            {
+            // If window has reached its duration, classify it
+            if (windowActive && (now - windowStartTs) >= WINDOW_MS) {
                 SwingResult sr = SwingDetector_EndWindow();
+                windowActive = 0;   // next sample will start a new window
 
-                char buf[128];
+                if (sr.swing_detected) {
+                    // 1) Log swing into the event buffer (inside swing_detector.c)
+                    SwingEventBuffer_Push(now, sr.direction);
 
-                if (!sr.swing_detected) {
-                    sprintf(buf,
-                            "[%lu ms] NO SWING\r\n",
-                            (unsigned long)ts);
-                } else {
-                    const char *dirStr = "UNKNOWN";
+                    // 2) Also print it so detection on the terminal
+                    char buf[80];
+                    const char *dirStr = "NONE";
                     switch (sr.direction) {
                         case SWING_LEFT_TO_RIGHT:  dirStr = "LEFT_TO_RIGHT";  break;
                         case SWING_RIGHT_TO_LEFT:  dirStr = "RIGHT_TO_LEFT";  break;
                         case SWING_UP:             dirStr = "UP";             break;
                         case SWING_DOWN:           dirStr = "DOWN";           break;
-                        default:                   dirStr = "UNKNOWN";        break;
+                        default:                   dirStr = "NONE";           break;
                     }
-
-                    sprintf(buf,
-                            "[%lu ms] SWING: %s\r\n",
-                            (unsigned long)ts, dirStr);
+                    sprintf(buf, "[%u ms] SWING: %s\r\n", (unsigned)now, dirStr);
+                    UART_Write_String(buf);
                 }
 
-                UART_Write_String(buf);
-
-                // Start a new window
-                SwingDetector_BeginWindow();
-                windowStartMs = ts;
+                // If no swing_detected → no event pushed, buffer stays unchanged
             }
+
         }
 
-        delay(5); // Trigger rate ~200 Hz (or use TIMx)
+        // Control how often you trigger DMA requests (approx. sample rate)
+        delay(5);   // ~200 Hz trigger rate
     }
 }
+
+
+

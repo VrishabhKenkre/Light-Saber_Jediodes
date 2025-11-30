@@ -1,5 +1,3 @@
 ROOT=.
 TARGET=NUCLEO_F446ZE
 TARGET_CODE=0778
-DEVICE_ID[/home/studio/workspace/light-saber_jediodes]=066CFF565282494867172210
-DEVICE_TYPE[/home/studio/workspace/light-saber_jediodes]=connected
