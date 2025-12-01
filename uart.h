@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-void USART2_Init(void);
+void USART3_Init(void);
 void UART_Write_String(const char *p);
 
 #ifdef __cplusplus

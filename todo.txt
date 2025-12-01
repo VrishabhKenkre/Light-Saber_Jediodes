@@ -1,0 +1,26 @@
+In IMU:
+uint32_t now = get_Ticks();
+SwingDetector_FeedSample(gx_dps, gy_dps, gz_dps, now);
+
+// On entry:
+uint32_t window_start_ms = get_Ticks();
+
+// When timer for that state expires:
+uint32_t window_end_ms = get_Ticks();
+SwingResult swing = SwingDetector_AnalyzeWindow(window_start_ms, window_end_ms);
+
+if (swing.swing_detected) {
+    // swing.direction is one of LEFT_TO_RIGHT, RIGHT_TO_LEFT, UP, DOWN
+} else {
+    // no valid swing
+}
+
+2. When a home position would matter
+You’d only need a “home” / “neutral” orientation if:
+You want directions defined relative to the world / gravity, not the sword.
+e.g. “swing UP” meaning “toward the ceiling” no matter how they hold the handle.
+You want the game to say “return to home pose before next move”.
+For that, you’d:
+Use the fused roll/pitch (and gravity vector) to define “up”.
+Maybe store an initial orientation when they press “calibrate” (home button).
+Then you’d interpret swings in world-frame instead of the raw sensor frame.
