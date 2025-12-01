@@ -19,7 +19,7 @@ int main(void)
     USART2_Init();
     Ticks_Init(180000000);    // SysTick at 1 ms tick
 
-    i2c1_init();              // bare-metal I2C init
+    i2c1_init();              // your bare-metal I2C init
     MPU6050_DMA_Init();       // DMA extension
 
     // Configure IMU using your existing driver
@@ -75,6 +75,8 @@ int main(void)
             float ay_lin = 0.0f;
             float az_lin = 0.0f;
 
+            // --- Window management for swing detection ---
+
             // If no active window, start one at this timestamp
             if (!windowActive) {
                 SwingDetector_BeginWindow();
@@ -98,7 +100,7 @@ int main(void)
                     // 1) Log swing into the event buffer (inside swing_detector.c)
                     SwingEventBuffer_Push(now, sr.direction);
 
-                    // 2) Also print it so detection on the terminal
+                    // 2) Also print it so you can see detection on the terminal
                     char buf[80];
                     const char *dirStr = "NONE";
                     switch (sr.direction) {
@@ -115,10 +117,15 @@ int main(void)
                 // If no swing_detected → no event pushed, buffer stays unchanged
             }
 
+            // Later, your state machine will do something like:
+            // SwingEvent ev;
+            // if (SwingEventBuffer_Pop(&ev)) {
+            //     // use ev.t_ms and ev.dir
+            // }
         }
 
         // Control how often you trigger DMA requests (approx. sample rate)
-        delay(5);   // ~200 Hz trigger rate
+        delay(5);   // ~200 Hz trigger rate, adjust if needed
     }
 }
 

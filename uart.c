@@ -19,8 +19,8 @@ void USART2_Init(void)   // name stays USART2_Init() so main.cpp doesn’t chang
     GPIOD->AFR[1] &= ~((0xF << ((8 - 8) * 4)) | (0xF << ((9 - 8) * 4)));
     GPIOD->AFR[1] |=  (7U  << ((8 - 8) * 4)) | (7U  << ((9 - 8) * 4));
 
-    // 3) Baudrate: 115200 @ 16 MHz APB1
-    USART3->BRR = 0x0187;
+    // 3) Baudrate: 9600 @ 16 MHz APB1
+    USART3->BRR = 0x0683;
 
     // 4) Enable TX and USART
     USART3->CR1 = USART_CR1_TE | USART_CR1_UE;

@@ -201,4 +201,3 @@ SwingResult SwingDetector_EndWindow(void)
     }
     return res;
 }
-
