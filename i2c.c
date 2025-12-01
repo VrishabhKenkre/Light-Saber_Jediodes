@@ -91,7 +91,7 @@ void i2c1_init(void)
     I2C1_CR2 = 16;
 
     /* Standard mode 100kHz: CCR = 80, TRISE = 17 */
-    I2C1_CCR = 160;
+    I2C1_CCR = 80;
     I2C1_TRISE = 17;
 
     /* Enable peripheral */

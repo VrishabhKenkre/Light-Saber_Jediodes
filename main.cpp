@@ -16,9 +16,10 @@
 
 int main(void)
 {
-    USART2_Init();
+    USART3_Init();
+    printf("HI");
     Ticks_Init(180000000);    // SysTick at 1 ms tick
-
+    
     i2c1_init();              // your bare-metal I2C init
     MPU6050_DMA_Init();       // DMA extension
 
